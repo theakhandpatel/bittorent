@@ -27,6 +27,7 @@ func decodeBencode(bencodedString string, curIndex int) (interface{}, int, error
 	} else {
 		err = fmt.Errorf("only strings are supported at the moment")
 	}
+
 	if err != nil {
 		return nil, -1, err
 	}
@@ -90,6 +91,9 @@ func decodeForList(bencodedString string, curIndex int) (interface{}, int, error
 		curIndex = itr + 1
 		result = append(result, item)
 	}
+	if len(result) == 0 {
+		result = append(result, "")
+	}
 	return result, curIndex, nil
 }
 
@@ -117,7 +121,6 @@ func main() {
 
 		jsonOutput, _ := json.Marshal(decoded)
 		fmt.Println(string(jsonOutput))
-
 	} else {
 		fmt.Println("Unknown command: " + command)
 		os.Exit(1)
