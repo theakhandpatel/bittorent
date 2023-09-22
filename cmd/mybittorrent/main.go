@@ -91,9 +91,7 @@ func decodeForList(bencodedString string, curIndex int) (interface{}, int, error
 		curIndex = itr + 1
 		result = append(result, item)
 	}
-	if len(result) == 0 {
-		result = append(result, "")
-	}
+
 	return result, curIndex, nil
 }
 
@@ -120,7 +118,12 @@ func main() {
 		}
 
 		jsonOutput, _ := json.Marshal(decoded)
-		fmt.Println(string(jsonOutput))
+		if string(jsonOutput) != "null" {
+			fmt.Println(string(jsonOutput))
+		} else {
+			fmt.Println("[]")
+		}
+
 	} else {
 		fmt.Println("Unknown command: " + command)
 		os.Exit(1)
