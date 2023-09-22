@@ -24,6 +24,8 @@ func decodeBencode(bencodedString string, curIndex int) (interface{}, int, error
 		result, curIndex, err = decodeForNumber(bencodedString, curIndex)
 	} else if bencodedString[curIndex] == 'l' {
 		result, curIndex, err = decodeForList(bencodedString, curIndex)
+	} else if bencodedString[curIndex] == 'd' {
+		result, curIndex, err = decodeForDictionary(bencodedString, curIndex)
 	} else {
 		err = fmt.Errorf("only strings are supported at the moment")
 	}
@@ -92,6 +94,24 @@ func decodeForList(bencodedString string, curIndex int) (interface{}, int, error
 		result = append(result, item)
 	}
 
+	return result, curIndex, nil
+}
+
+func decodeForDictionary(bencodedString string, curIndex int) (interface{}, int, error) {
+	result := make(map[string]interface{})
+	for curIndex = curIndex + 1; bencodedString[curIndex] != 'e'; {
+		key, itr, err := decodeForString(bencodedString, curIndex)
+		if err != nil {
+			return nil, -1, err
+		}
+		itr = itr + 1
+		value, itr, err := decodeBencode(bencodedString, itr)
+		if err != nil {
+			return nil, -1, err
+		}
+		curIndex = itr + 1
+		result[key] = value
+	}
 	return result, curIndex, nil
 }
 
