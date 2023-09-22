@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"strconv"
 	"unicode"
@@ -124,6 +125,49 @@ func findOccurrenceAfterIndex(str string, char rune, curIndex int) int {
 	return -1 // Character not found after curIndex
 }
 
+type TorrentMeta struct {
+	Announce string
+	Info     struct {
+		Length       int
+		Name         string
+		Piece_length int
+		Pieces       string
+	}
+}
+
+func parseTorrent(filePath string) (TorrentMeta, error) {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return TorrentMeta{}, err
+	}
+	fileContent, err := io.ReadAll(file)
+	if err != nil {
+		return TorrentMeta{}, err
+	}
+	decodedContent, _, err := decodeBencode(string(fileContent), 0)
+	if err != nil {
+		return TorrentMeta{}, err
+	}
+
+	metaDict := decodedContent.(map[string]interface{})
+	metaInfoDict := metaDict["info"].(map[string]interface{})
+
+	return TorrentMeta{
+		Announce: metaDict["announce"].(string),
+		Info: struct {
+			Length       int
+			Name         string
+			Piece_length int
+			Pieces       string
+		}{
+			Length:       metaInfoDict["length"].(int),
+			Name:         metaInfoDict["name"].(string),
+			Piece_length: metaInfoDict["piece length"].(int),
+			Pieces:       metaInfoDict["pieces"].(string),
+		},
+	}, nil
+}
+
 func main() {
 	command := os.Args[1]
 
@@ -144,6 +188,13 @@ func main() {
 			fmt.Println("[]")
 		}
 
+	} else if command == "info" {
+		torrentFilePath := os.Args[2]
+		torrentMetaData, err := parseTorrent(torrentFilePath)
+		if err != nil {
+			fmt.Println("Error parsing file")
+		}
+		fmt.Printf("Tracker URL: %s\nLength: %d\n", torrentMetaData.Announce, torrentMetaData.Info.Length)
 	} else {
 		fmt.Println("Unknown command: " + command)
 		os.Exit(1)
