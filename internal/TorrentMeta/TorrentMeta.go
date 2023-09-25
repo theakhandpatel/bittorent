@@ -2,10 +2,16 @@ package torrentMeta
 
 import (
 	"crypto/sha1"
+	"encoding/binary"
 	"encoding/hex"
 	"fmt"
 	"io"
+	"math/rand"
+	"net"
+	"net/http"
+	"net/url"
 	"os"
+	"time"
 
 	"github.com/codecrafters-io/bittorrent-starter-go/internal/bencode"
 )
@@ -18,7 +24,11 @@ type TorrentMeta struct {
 		PieceLength int
 		PiecesHash  string
 	}
-	InfoHash string
+	InfoHash   []byte
+	Port       int
+	Uploaded   int
+	Downloaded int
+	Left       int
 }
 
 func NewFromFile(filePath string) (TorrentMeta, error) {
@@ -42,27 +52,24 @@ func NewFromFile(filePath string) (TorrentMeta, error) {
 		return TorrentMeta{}, err
 	}
 	shaHash := sha1.Sum([]byte(encodedInfo))
-	infoHash := hex.EncodeToString(shaHash[:])
+	infoHash := (shaHash[:])
 
-	return TorrentMeta{
-		Announce: metaDict["announce"].(string),
-		Info: struct {
-			Length      int
-			Name        string
-			PieceLength int
-			PiecesHash  string
-		}{
-			Length:      metaInfoDict["length"].(int),
-			Name:        metaInfoDict["name"].(string),
-			PieceLength: metaInfoDict["piece length"].(int),
-			PiecesHash:  metaInfoDict["pieces"].(string),
-		},
-		InfoHash: infoHash,
-	}, nil
+	tm := TorrentMeta{}
+	tm.Info.Length = metaInfoDict["length"].(int)
+	tm.Info.Name = metaInfoDict["name"].(string)
+	tm.Info.PieceLength = metaInfoDict["piece length"].(int)
+	tm.Info.PiecesHash = metaInfoDict["pieces"].(string)
+	tm.InfoHash = infoHash
+	tm.Announce = metaDict["announce"].(string)
+	tm.Port = 6881
+	tm.Uploaded = 0
+	tm.Downloaded = 0
+	tm.Left = tm.Info.Length
+
+	return tm, nil
 }
 
 func (tm *TorrentMeta) GetPieces() ([]string, error) {
-
 	if len(tm.Info.PiecesHash)%20 != 0 {
 		return nil, fmt.Errorf("pieceHashes length is not a multiple of 20 bytes")
 	}
@@ -78,4 +85,90 @@ func (tm *TorrentMeta) GetPieces() ([]string, error) {
 
 	}
 	return hashes, nil
+}
+
+// ConstructTrackerURL constructs the tracker URL with required query parameters.
+func (tm *TorrentMeta) ConstructTrackerURL(peerID string) (string, error) {
+	// Create a URL object
+	trackerURL, err := url.Parse(tm.Announce)
+	if err != nil {
+		return "", err
+	}
+
+	// Prepare query parameters
+	query := trackerURL.Query()
+	query.Add("info_hash", string(tm.InfoHash))
+	query.Add("peer_id", peerID)
+	query.Add("port", fmt.Sprint(tm.Port))             // Set your desired port here
+	query.Add("uploaded", fmt.Sprint(tm.Uploaded))     // Total uploaded bytes
+	query.Add("downloaded", fmt.Sprint(tm.Downloaded)) // Total downloaded bytes
+	query.Add("left", fmt.Sprint(tm.Left))             // Number of bytes left to download
+	query.Add("compact", "1")                          // Use compact representation
+
+	// Set the query parameters
+	trackerURL.RawQuery = query.Encode()
+
+	return trackerURL.String(), nil
+}
+
+func (tm *TorrentMeta) DiscoverPeers() ([]*Peer, error) {
+	trackerURL, err := tm.ConstructTrackerURL(generatePeerID())
+	if err != nil {
+		return nil, err
+	}
+	response, err := http.Get(trackerURL)
+	if err != nil {
+		return nil, err
+	}
+	defer response.Body.Close()
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	trackerResponse, err := bencode.Decode(string(body))
+	trackerResponseMap := trackerResponse.(map[string]interface{})
+	if err != nil {
+		return nil, err
+	}
+
+	peersStr, ok := trackerResponseMap["peers"].(string)
+	if !ok {
+		return nil, fmt.Errorf("peers not recieved")
+	}
+
+	var peerList []*Peer
+	if len(peersStr)%6 != 0 {
+		return nil, fmt.Errorf("invalid peers string length")
+	}
+
+	for i := 0; i < len(peersStr); i += 6 {
+		ipBytes := peersStr[i : i+4]
+		portBytes := peersStr[i+4 : i+6]
+
+		ip := net.IP(ipBytes).String()
+		port := int(binary.BigEndian.Uint16([]byte(portBytes)))
+
+		peerList = append(peerList, &Peer{IP: ip, Port: port})
+	}
+
+	return peerList, nil
+}
+
+type Peer struct {
+	IP   string
+	Port int
+}
+
+func generatePeerID() string {
+	letters := []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
+	source := rand.NewSource(time.Now().UnixNano())
+	r := rand.New(source)
+	// rand.Seed(time.Now().UnixNano())
+
+	b := make([]rune, 20)
+	for i := range b {
+		b[i] = letters[r.Intn(len(letters))]
+	}
+	return string(b)
 }
