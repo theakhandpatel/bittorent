@@ -26,12 +26,24 @@ func decodeHandler(bencodedValue string) {
 }
 
 func infoHandler(torrentFilePath string) {
-	torrentMetaData, err := torrentMeta.NewFromFile(torrentFilePath)
+	torrent, err := torrentMeta.NewFromFile(torrentFilePath)
 	if err != nil {
 		fmt.Println("Error parsing file")
+		return
 	}
-	fmt.Printf("Tracker URL: %s\nLength: %d\n", torrentMetaData.Announce, torrentMetaData.Info.Length)
-	fmt.Printf("Info Hash: %s\n", torrentMetaData.InfoHash)
+	fmt.Printf("Tracker URL: %s\nLength: %d\n", torrent.Announce, torrent.Info.Length)
+	fmt.Printf("Info Hash: %s\n", torrent.InfoHash)
+
+	pieces, err := torrent.GetPieces()
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	fmt.Println("Piece Hashes:")
+	for _, piece := range pieces {
+		fmt.Println(piece)
+	}
+
 }
 
 func main() {
