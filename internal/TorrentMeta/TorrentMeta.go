@@ -189,7 +189,7 @@ func (torrent *TorrentMeta) Handshake(ipPort string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	peerID := fmt.Sprintf("%x", response[48:])
+	peerID := fmt.Sprintf("%x\n", response[48:])
 
 	return peerID, nil
 }
