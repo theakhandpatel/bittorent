@@ -33,7 +33,7 @@ func infoHandler(torrentFilePath string) {
 	}
 	fmt.Printf("Tracker URL: %s\nLength: %d\n", torrent.Announce, torrent.Info.Length)
 	fmt.Printf("Info Hash: %s\n", torrent.InfoHash)
-
+	fmt.Printf("Piece Length: %d\n", torrent.Info.PieceLength)
 	pieces, err := torrent.GetPieces()
 	if err != nil {
 		fmt.Println(err)
