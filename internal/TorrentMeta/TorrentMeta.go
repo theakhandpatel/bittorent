@@ -16,6 +16,11 @@ import (
 	"github.com/codecrafters-io/bittorrent-starter-go/internal/bencode"
 )
 
+const (
+	ProtocolIdentifier = "BitTorrent protocol"
+	ReservedBytes      = "\x00\x00\x00\x00\x00\x00\x00\x00"
+)
+
 type TorrentMeta struct {
 	Announce string
 	Info     struct {
@@ -25,6 +30,7 @@ type TorrentMeta struct {
 		PiecesHash  string
 	}
 	InfoHash   []byte
+	PeerID     string
 	Port       int
 	Uploaded   int
 	Downloaded int
@@ -55,6 +61,7 @@ func NewFromFile(filePath string) (TorrentMeta, error) {
 	infoHash := (shaHash[:])
 
 	tm := TorrentMeta{}
+	tm.PeerID = generatePeerID()
 	tm.Info.Length = metaInfoDict["length"].(int)
 	tm.Info.Name = metaInfoDict["name"].(string)
 	tm.Info.PieceLength = metaInfoDict["piece length"].(int)
@@ -88,7 +95,7 @@ func (tm *TorrentMeta) GetPieces() ([]string, error) {
 }
 
 // ConstructTrackerURL constructs the tracker URL with required query parameters.
-func (tm *TorrentMeta) ConstructTrackerURL(peerID string) (string, error) {
+func (tm *TorrentMeta) ConstructTrackerURL() (string, error) {
 	// Create a URL object
 	trackerURL, err := url.Parse(tm.Announce)
 	if err != nil {
@@ -98,7 +105,7 @@ func (tm *TorrentMeta) ConstructTrackerURL(peerID string) (string, error) {
 	// Prepare query parameters
 	query := trackerURL.Query()
 	query.Add("info_hash", string(tm.InfoHash))
-	query.Add("peer_id", peerID)
+	query.Add("peer_id", tm.PeerID)
 	query.Add("port", fmt.Sprint(tm.Port))             // Set your desired port here
 	query.Add("uploaded", fmt.Sprint(tm.Uploaded))     // Total uploaded bytes
 	query.Add("downloaded", fmt.Sprint(tm.Downloaded)) // Total downloaded bytes
@@ -112,7 +119,7 @@ func (tm *TorrentMeta) ConstructTrackerURL(peerID string) (string, error) {
 }
 
 func (tm *TorrentMeta) DiscoverPeers() ([]*Peer, error) {
-	trackerURL, err := tm.ConstructTrackerURL(generatePeerID())
+	trackerURL, err := tm.ConstructTrackerURL()
 	if err != nil {
 		return nil, err
 	}
@@ -153,6 +160,38 @@ func (tm *TorrentMeta) DiscoverPeers() ([]*Peer, error) {
 	}
 
 	return peerList, nil
+}
+
+func (torrent *TorrentMeta) Handshake(ipPort string) (string, error) {
+	conn, err := net.Dial("tcp", ipPort)
+	if err != nil {
+		return "", err
+	}
+	defer conn.Close()
+
+	// Construct the handshake message
+	handshakeMessage := []byte{byte(len(ProtocolIdentifier))}
+	handshakeMessage = append(handshakeMessage, []byte(ProtocolIdentifier)...)
+	handshakeMessage = append(handshakeMessage, ReservedBytes...)
+	handshakeMessage = append(handshakeMessage, []byte(torrent.InfoHash)...)
+	handshakeMessage = append(handshakeMessage, []byte(torrent.PeerID)...)
+
+	// Send the handshake message
+	_, err = conn.Write(handshakeMessage)
+	if err != nil {
+		return "", err
+	}
+	defer conn.Close()
+
+	// Receive and parse the handshake response
+	response := make([]byte, 68) // A handshake response is always 68 bytes
+	_, err = conn.Read(response)
+	if err != nil {
+		return "", err
+	}
+	peerID := fmt.Sprintf("%x", response[48:])
+
+	return peerID, nil
 }
 
 type Peer struct {

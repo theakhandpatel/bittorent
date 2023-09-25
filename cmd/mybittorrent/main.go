@@ -63,6 +63,20 @@ func peersHandler(torrentFilePath string) {
 	}
 }
 
+func handshakeHandler(torrentFilePath string, peerString string) {
+	torrent, err := torrentMeta.NewFromFile(torrentFilePath)
+	if err != nil {
+		fmt.Println("Error parsing file")
+		return
+	}
+	recieverID, err := torrent.Handshake(peerString)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	fmt.Printf("Peer ID: %s", recieverID)
+}
+
 func main() {
 	command := os.Args[1]
 
@@ -72,6 +86,8 @@ func main() {
 		infoHandler(os.Args[2])
 	} else if command == "peers" {
 		peersHandler(os.Args[2])
+	} else if command == "handshake" {
+		handshakeHandler(os.Args[2], os.Args[3])
 	} else {
 		fmt.Println("Unknown command: " + command)
 		os.Exit(1)
