@@ -19,7 +19,17 @@ import (
 const (
 	ProtocolIdentifier = "BitTorrent protocol"
 	ReservedBytes      = "\x00\x00\x00\x00\x00\x00\x00\x00"
+	BlockSize          = 16 * 1024
 )
+
+type Peer struct {
+	IP   string
+	Port int
+}
+
+func (p Peer) String() string {
+	return fmt.Sprintf("%s:%d", p.IP, p.Port)
+}
 
 type TorrentMeta struct {
 	Announce string
@@ -94,6 +104,15 @@ func (tm *TorrentMeta) GetPieces() ([]string, error) {
 	return hashes, nil
 }
 
+func (tm *TorrentMeta) IsAuthentic(pieceData []byte, pieceNum int) bool {
+	piecesHashes, _ := tm.GetPieces()
+	pieceHashBytes := sha1.Sum(pieceData)
+	pieceHash := hex.EncodeToString(pieceHashBytes[:])
+	fmt.Println(pieceHash)
+	// Compare the calculated hash with the expected hash from the torrent metadata
+	return pieceHash == piecesHashes[pieceNum]
+}
+
 // ConstructTrackerURL constructs the tracker URL with required query parameters.
 func (tm *TorrentMeta) ConstructTrackerURL() (string, error) {
 	// Create a URL object
@@ -162,12 +181,7 @@ func (tm *TorrentMeta) DiscoverPeers() ([]*Peer, error) {
 	return peerList, nil
 }
 
-func (torrent *TorrentMeta) Handshake(ipPort string) (string, error) {
-	conn, err := net.Dial("tcp", ipPort)
-	if err != nil {
-		return "", err
-	}
-	defer conn.Close()
+func (torrent *TorrentMeta) Handshake(conn net.Conn) (string, error) {
 
 	// Construct the handshake message
 	handshakeMessage := []byte{byte(len(ProtocolIdentifier))}
@@ -177,14 +191,13 @@ func (torrent *TorrentMeta) Handshake(ipPort string) (string, error) {
 	handshakeMessage = append(handshakeMessage, []byte(torrent.PeerID)...)
 
 	// Send the handshake message
-	_, err = conn.Write(handshakeMessage)
+	_, err := conn.Write(handshakeMessage)
 	if err != nil {
 		return "", err
 	}
-	defer conn.Close()
 
-	// Receive and parse the handshake response
-	response := make([]byte, 68) // A handshake response is always 68 bytes
+	// Receive and parse the handshake response (68 bytes)
+	response := make([]byte, 68)
 	_, err = conn.Read(response)
 	if err != nil {
 		return "", err
@@ -192,11 +205,6 @@ func (torrent *TorrentMeta) Handshake(ipPort string) (string, error) {
 	peerID := fmt.Sprintf("%x\n", response[48:])
 
 	return peerID, nil
-}
-
-type Peer struct {
-	IP   string
-	Port int
 }
 
 func generatePeerID() string {
